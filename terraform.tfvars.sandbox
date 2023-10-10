@@ -1,0 +1,9 @@
+### BOF
+network_name = "default"
+subnet_name = "k8s-sandbox"
+
+sys_admin_user = {
+  user_name = "ansible-inventory"
+  ssh_pub_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILpHDXRW4TfIqHZgCEUBNq8dmnw1GUu69aDVRcl3pLz9 ansible-inventory@suitcase"
+}
+### EOF

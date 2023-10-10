@@ -1,0 +1,45 @@
+= Создание managed kubernetes cluster
+
+Два набора манифестов:
+
+*.production - региональный кластер. Контрол плейн и рабочие узлы расположены в трех зонах яндекса.
+Максимальная отказоустойчивость и возможность выделения контрол плейну большего количества ресурсов.
+Использовать для продакшен кластера, для кластера с площадками разработчиком, для все вариантов.
+
+*.sandbox - кластер, расположенный в одной зоне - зональный региональный. Использовать только для кратковременных
+тестовых кластеров со временем жизни не больше недели.
+
+=== Стейт терраформа хранится в гитлабе.
+
+== Начало работы
+
+Создаем в Яндекс Облаке каталог (folder), в каталоге создаем сеть, а ней три сабнета в разных регионах для регионального кластера,
+или один для зонального.
+
+Создаем в каталоге сервисный аккаунт с названием терраформ и при создании назначаем ему роль admin.
+Под этой ролью в облако будет ходить terraform.
+Создаем и запоминаем IAM token:
+*Срок жизни токена ограничен 12 часами*
+
+```
+yc iam key create --cloud-id b1go69mo9f9bcvlb5r7a --folder-name default --service-account-name terraform --output key.json
+yc config profile create my-terraform-profile
+yc config set service-account-key key.json
+yc iam create-token
+```
+
+Заполняем переменные окружения проекта в gitlab
+YC_CLOUD_ID
+YC_FOLDER_ID_PRODUCTION
+YC_FOLDER_ID_SANDBOX
+YC_TOKEN
+
+== Ссылки
+
+Terrafrom resources:
+https://registry.terraform.io/providers/yandex-cloud/yandex/latest/docs/resources/kubernetes_cluster[yandex_kubernetes_cluster]
+https://registry.terraform.io/providers/yandex-cloud/yandex/latest/docs/resources/kubernetes_node_group[yandex_kubernetes_node_group]
+
+Значения параметров удобнее всего смотреть в документации на YandexAPI
+https://cloud.yandex.com/en/docs/managed-kubernetes/api-ref/Cluster/[Cluster]
+https://cloud.yandex.com/en/docs/managed-kubernetes/api-ref/NodeGroup/[NodeGroup]

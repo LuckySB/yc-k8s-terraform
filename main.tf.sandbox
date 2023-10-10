@@ -1,0 +1,37 @@
+# vim: set ft=tf expandtab softtabstop=2:
+# Required CI variables:
+# YC_TOKEN: Security token or IAM token used for authentication in Yandex.Cloud.
+# YC_CLOUD_ID: The ID of the cloud to apply any resources to.
+# YC_FOLDER_ID: The ID of the folder to operate under, if not specified by a given resource.
+# TF_VAR_folder_id: The same data as above
+
+provider "yandex" {}
+
+data "yandex_vpc_subnet" "subnet" {
+  name            = var.subnet_name
+  folder_id       = var.folder_id
+}
+
+module "sandbox" {
+  source                      = "./modules/cluster-zonal"
+  cluster_name                = "sandbox-1"
+  cluster_release_channel     = "RAPID"
+  cluster_release_network_provider = "CALICO"
+  cluster_k8s_version         = "1.27"
+  cluster_ipv4_range          = "172.24.0.0/16"
+  service_ipv4_range          = "10.124.0.0/16"
+  cluster_public_ip           = true
+  cluster_maintenance_policy  = false
+  cluster_auto_repair         = true
+  cluster_nodes_platform_id   = "standard-v2"
+  cluster_nodes_cores         = 2
+  cluster_nodes_memory        = 4
+  cluster_nodes_fixed_scale   = 1
+  cluster_nodes_boot_disk_type = "network-ssd-nonreplicated" # network-ssd|network-hdd|network-ssd-nonreplicated
+  cluster_nodes_boot_disk_size = 93
+  folder_id                   = var.folder_id
+  zone                        = data.yandex_vpc_subnet.subnet.zone
+  network_id                  = data.yandex_vpc_subnet.subnet.network_id
+  subnet_id                   = data.yandex_vpc_subnet.subnet.id
+  node_group_name             = "sandbox-1-default-nodes"
+}

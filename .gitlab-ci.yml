@@ -1,0 +1,213 @@
+---
+stages:
+  - template
+  - prepare
+  - validate
+  - build
+  - deploy
+  - rollback
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'master'
+    - if: $CI_MERGE_REQUEST_ID
+    - if: $CI_PIPELINE_SOURCE == 'web'
+
+variables:
+  CHECKPOINT_DISABLE: "true"
+  TF_PLUGIN_CACHE_DIR: .terraform.d/plugin-cache
+
+default:
+  tags:
+    - dind
+#    - terraform-runner
+
+  before_script:
+#          url = "https://terraform-mirror.yandexcloud.net/"
+
+    - |
+      echo 'provider_installation {
+        network_mirror {
+          url = "https://nm.tf.org.ru/"
+          include = ["registry.terraform.io/*/*"]
+        }
+        direct {
+          exclude = ["registry.terraform.io/*/*"]
+        }
+      }' > ~/.terraformrc
+    - echo "TF_ROOT[$TF_ROOT] TF_ADDRESS[$TF_ADDRESS]"
+    - cp -v main.tf.${CIRCUIT} main.tf
+    - cp -v terraform.tfvars.${CIRCUIT} terraform.tfvars
+    - cd "$TF_ROOT"
+    - |
+      if [[ $CI_JOB_STAGE != "prepare" && -d "${TF_PLUGIN_CACHE_DIR}/registry.terraform.io" ]]; then
+        mkdir -pv /usr/local/lib/terraform;
+        cp -r ${TF_PLUGIN_CACHE_DIR}/registry.terraform.io /usr/local/lib/terraform;
+        echo 'provider_installation { filesystem_mirror { path = "/usr/local/lib/terraform" } }' > ~/.terraformrc;
+      fi;
+
+.c_sandbox:
+  variables:
+    CIRCUIT: sandbox
+    YC_FOLDER_ID: "$YC_FOLDER_ID_SANDBOX"
+    TF_VAR_folder_id: "$YC_FOLDER_ID_SANDBOX"
+
+.c_production:
+  variables:
+    CIRCUIT: production
+    YC_FOLDER_ID: "$YC_FOLDER_ID_PRODUCTION"
+    TF_VAR_folder_id: "$YC_FOLDER_ID_PRODUCTION"
+
+.tf_common:
+  cache:
+    key: $CIRCUIT
+    paths:
+      - ${TF_ROOT}/.terraform
+      - ${TF_ROOT}/.terraform.d
+      - ${TF_ROOT}/.terraform.lock.hcl
+      - ${TF_ROOT}/terraform.tfstate
+      - ${TF_ROOT}/terraform.tfstate.backup
+  image:
+    name: registry.gitlab.com/gitlab-org/terraform-images/branches/v0-19-0-0.15:50fb92a348dcfbd79adacd7fa0f03630f82573d8
+  variables:
+    TF_ROOT: ${CI_PROJECT_DIR}
+    TF_ADDRESS: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/$CIRCUIT
+
+.tf_init:
+  extends:
+    - .tf_common
+  script:
+    - mkdir -p $TF_PLUGIN_CACHE_DIR
+    - gitlab-terraform version
+    - |
+      if [[ $TF_REMOVE_HCL_LOCK == "true" && -f .terraform.lock.hcl ]]; then
+        rm -v .terraform.lock.hcl;
+      fi
+    - gitlab-terraform init
+  stage: prepare
+
+tf:init:sandbox:
+  extends:
+    - .c_sandbox
+    - .tf_init
+
+tf:init:production:
+  extends:
+    - .c_production
+    - .tf_init
+
+.tf_validate:
+  extends:
+    - .tf_common
+  script:
+    - gitlab-terraform validate
+  stage: validate
+
+tf:validate:sandbox:
+  extends:
+    - .c_sandbox
+    - .tf_validate
+  needs:
+    - tf:init:sandbox
+
+tf:validate:production:
+  extends:
+    - .c_production
+    - .tf_validate
+  needs:
+    - tf:init:production
+
+.tf_plan:
+  artifacts:
+    name: plan
+    paths:
+      - ${TF_ROOT}/plan.cache
+    reports:
+      terraform: ${TF_ROOT}/plan.json
+  extends:
+    - .tf_common
+  script:
+    - gitlab-terraform plan
+    - gitlab-terraform plan-json
+  stage: build
+
+tf:plan:sandbox:
+  extends:
+    - .c_sandbox
+    - .tf_plan
+  needs:
+    - tf:validate:sandbox
+
+tf:plan:production:
+  extends:
+    - .c_production
+    - .tf_plan
+  needs:
+    - tf:validate:production
+
+.tf_apply:
+  extends:
+    - .tf_common
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'master'
+      when: manual
+  script:
+    - gitlab-terraform apply
+  stage: deploy
+
+tf:apply:sandbox:
+  dependencies:
+    - tf:plan:sandbox
+  environment:
+    name: sandbox
+  extends:
+    - .c_sandbox
+    - .tf_apply
+  needs:
+    - tf:plan:sandbox
+
+tf:apply:production:
+  dependencies:
+    - tf:plan:production
+  environment:
+    name: production
+  extends:
+    - .c_production
+    - .tf_apply
+  needs:
+    - tf:plan:production
+
+.tf_destroy:
+  extends:
+    - .tf_common
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'master'
+      when: manual
+  script:
+    - |
+      if [[ $YES_I_CAN == "true" ]]; then
+        gitlab-terraform destroy;
+      else
+        echo "YOU CANNOT." >&2;
+        exit 2;
+      fi
+  stage: rollback
+
+tf:destroy:sandbox:
+  environment:
+    name: sandbox
+  extends:
+    - .c_sandbox
+    - .tf_destroy
+  needs:
+    - tf:validate:sandbox
+
+tf:destroy:production:
+  environment:
+    name: production
+  extends:
+    - .c_production
+    - .tf_destroy
+  needs:
+    - tf:validate:production
+...

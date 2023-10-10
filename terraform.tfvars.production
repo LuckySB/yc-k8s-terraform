@@ -1,0 +1,12 @@
+### BOF
+region = "ru-central1"
+network_name = "default"
+subnet_a_name = "default-ru-central1-a"
+subnet_b_name = "default-ru-central1-b"
+subnet_c_name = "default-ru-central1-c"
+
+sys_admin_user = {
+  user_name = "ansible-inventory"
+  ssh_pub_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBtghxgNsovXYsRIzLE949NJIHW1sJgksjsEUCp8r7PW ansible-inventory@suitcase"
+}
+### EOF
